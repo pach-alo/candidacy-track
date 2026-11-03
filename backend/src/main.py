@@ -1,32 +1,38 @@
 from fastapi import FastAPI
 from sqlalchemy import text
-from schemas import ApplicationStatus, ApplicationCreate
-from db import engine
+from backend.src.schemas.application import ApplicationStatus, ApplicationCreate
+from backend.src.db.db import engine
+from fastapi import HTTPException
 
 app = FastAPI()
 @app.get("/")
+def root():
+    return {"message": "candidacy-tracker running"}
+
+
 @app.post("/applications/")
 def create_application(application: ApplicationCreate):
     query = text("""
     INSERT INTO applications(
     job_title, job_url, date_applied, status, notes, company_id
     )
-    VALUES (:job_title, :job_url, :date_applied, :status, :notes, :company_id))
+    VALUES (:job_title, :job_url, :date_applied, :status, :notes, :company_id)
     RETURNING id, job_title, job_url, date_applied, status, notes, company_id
     """)
 
-    with engine.connect() as connection:
+    with engine.begin() as connection:
         result = connection.execute(query, {
             "job_title": application.job_title,
-            "job_url": application.job_url,
+            "job_url": str(application.job_url) if application.job_url else None,   
             "date_applied": application.date_applied,
-            "status": application.status,
+            "status": application.status.value,
             "notes": application.notes,
             "company_id": application.company_id
         })
-        created_application = result.fetchone()
+        created_application = result.mappings().first()
+    
+    return dict(created_application) if created_application else None   
 
-    return created_application
 
 @app.get("/applications")
 def get_applications():
